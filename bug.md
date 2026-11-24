@@ -124,3 +124,62 @@ Pada debug network, koneksi HTTP mengembalikan status 200 namun proses transfer 
 2. **Pengujian Aplikasi**:
    - Request ke API tidak lagi terputus prematur pada detik ke-15.
    - Saat payload selesai diunduh, server card langsung tampil di layar secara responsif tanpa error `TimeoutException`.
+
+
+---
+
+# Bug #3: VPN Berhasil Konek di Emulator namun Gagal Konek pada Real Device
+
+## 1. Ringkasan Masalah
+Aplikasi Micin VPN dapat melakukan koneksi VPN dengan sukses saat diuji coba pada Android Emulator. Namun, ketika APK diinstal dan dijalankan pada **Real Device (smartphone Android fisik)**, proses koneksi VPN gagal: status berhenti di fase connecting atau langsung terputus (disconnecting/denied) tanpa terbentuk tunnel VPN yang aktif.
+
+---
+
+## 2. Investigasi & Akar Masalah (Root Cause)
+
+Terdapat perbedaan arsitektur sistem, security enforcement, dan versi OpenSSL antara environment Emulator (x86_64) dengan Real Device (ARM64 / Android 13-14):
+
+1. **Aturan Foreground Service & Izin Notifikasi (Android 13+ & 14+)**:
+   - Pada Real Device dengan Android 13 (API 33) dan Android 14 (API 34+), layanan VPN wajib berjalan sebagai **Foreground Service** yang menampilkan notifikasi persisten (`VpnService`).
+   - Jika izin notifikasi (`POST_NOTIFICATIONS`) belum diberikan oleh pengguna, atau deklarasi izin foreground service `FOREGROUND_SERVICE_SYSTEM_EXEMPTED` tidak ada di Manifest, sistem Android pada perangkat fisik langsung mematikan service VPN di latar belakang karena pembatasan ketat daya baterai dan keamanan OEM (Xiaomi/Samsung/Oppo/Realme dsb.).
+   - Pada emulator AOSP murni, pembatasan background foreground service jauh lebih longgar sehingga VPN tampak berhasil tanpa izin notifikasi eksplisit.
+
+2. **Inkompatibilitas Cipher VPN Gate dengan OpenSSL 3.5 (OpenVPN 2.7 Engine)**:
+   - Kebanyakan server publik VPN Gate masih menggunakan cipher warisan seperti `BF-CBC` (Blowfish) tanpa mendeklarasikan negosiasi cipher modern (`data-ciphers`).
+   - Engine bawaan `openvpn_flutter` 2.0.0 menggunakan OpenSSL 3.5. Pada Real Device (khususnya arsitektur ARM), OpenSSL 3.5 secara default menonaktifkan algoritma legacy (`BF-CBC`) demi keamanan kriptografi, menyebabkan kegagalan negosiasi data channel (*"No usable data channel cipher"*).
+
+3. **Return Value Izin VpnService (`connect()` awaitable)**:
+   - Pada Real Device, saat pertama kali pengguna mengklik Connect, Android menampilkan dialog sistem pop-up persetujuan VPN (*"Connection request: Micin VPN wants to set up a VPN connection"*).
+   - Method `_openVPN.connect(...)` mengembalikan `Future<bool>` yang bernilai `false` jika pengguna menolak dialog sistem atau terjadi interupsi lifecycle, namun sebelumnya pemanggilan tersebut tidak di-`await` dan tidak menangani penolakan izin secara anggun.
+
+---
+
+## 3. Langkah Perbaikan (Resolution Steps)
+
+1. **Manifest Foreground Service & Notification Permissions**:
+   - Menambahkan izin berikut pada [android/app/src/main/AndroidManifest.xml](file:///c:/Users/User/Documents/Flutter/micinvpn/android/app/src/main/AndroidManifest.xml):
+     ```xml
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" android:minSdkVersion="34" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     ```
+2. **Runtime Request Izin Notifikasi**:
+   - Mengintegrasikan package `permission_handler` pada [lib/controllers/vpn_controller.dart](file:///c:/Users/User/Documents/Flutter/micinvpn/lib/controllers/vpn_controller.dart):
+     - Meminta izin notifikasi secara otomatis di runtime sebelum memulai koneksi VPN pada Real Device Android 13+.
+3. **Injeksi Kompatibilitas Cipher Fallback & Legacy Provider**:
+   - Memperbarui parser konfigurasi pada [lib/models/vpn_server.dart](file:///c:/Users/User/Documents/Flutter/micinvpn/lib/models/vpn_server.dart):
+     ```ovpn
+     data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:BF-CBC
+     data-ciphers-fallback BF-CBC
+     providers legacy default
+     ```
+   - Pengaturan ini menginstruksikan OpenSSL 3.5 pada Real Device untuk mengaktifkan modul legacy provider dan mendukung fallback cipher `BF-CBC` untuk server VPN Gate.
+4. **Error Handling & Awaitable Connect**:
+   - Menjadikan fungsi `connect()` asinkron (`async/await`) untuk memproses feedback dialog persetujuan VPN dari sistem operasi.
+
+---
+
+## 4. Hasil Verifikasi
+
+1. **Lint & Static Analysis**: `flutter analyze` $\rightarrow$ `No issues found!`
+2. **Automated Unit & Widget Tests**: `flutter test` $\rightarrow$ `All tests passed!`
+3. **Compatibility**: Konfigurasi OpenVPN kini kompatibel baik untuk server modern maupun server publik warisan VPN Gate, serta mematuhi kebijakan background service Android 13/14+ pada Real Device.

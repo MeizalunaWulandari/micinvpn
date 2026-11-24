@@ -25,16 +25,33 @@ class VpnServer {
     this.isCustom = false,
   });
 
-  /// Decode base64 to plain ovpn configuration text
+  /// Decode base64 to plain ovpn configuration text with cipher fallback compatibility
   String get configContent {
+    String content;
     if (isCustom) {
-      return openVpnConfigDataBase64;
+      content = openVpnConfigDataBase64;
+    } else {
+      try {
+        content = utf8.decode(base64.decode(openVpnConfigDataBase64));
+      } catch (_) {
+        content = openVpnConfigDataBase64;
+      }
     }
-    try {
-      return utf8.decode(base64.decode(openVpnConfigDataBase64));
-    } catch (_) {
-      return openVpnConfigDataBase64;
+
+    // Ensure compatibility with older VPN Gate servers using BF-CBC or unnegotiated ciphers on OpenVPN 2.7 / OpenSSL 3.5
+    final buffer = StringBuffer();
+    buffer.writeln(content);
+
+    // If configuration does not specify modern data-ciphers, provide fallback ciphers and legacy provider
+    if (!content.contains('data-ciphers')) {
+      buffer.writeln('data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:BF-CBC');
+      buffer.writeln('data-ciphers-fallback BF-CBC');
     }
+    if (!content.contains('providers')) {
+      buffer.writeln('providers legacy default');
+    }
+
+    return buffer.toString();
   }
 
   /// Create custom VPN server from user imported file
