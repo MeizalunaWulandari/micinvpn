@@ -1,0 +1,28 @@
+Inisiasi
+ - Buat Sebuah git di folder ini 
+ - buat Repo di github menggunakan github cli
+ - buat readme.md untuk setiap hal
+ - setiap pengerjaan akan menggunakan alur pull request 
+ - dilarang membuat langsung commit ke master
+ 
+
+BUILD 
+ - Buat sebuah Flutter App yang hanya untuk android
+ - aplikasi com.micinvpn.app
+ - Aplikasi bernama Micin VPN
+ - Aplikasi akan menggunakan konfig openvpn dan konfignya akan diambil dari vpn gate
+ - home page akan diambil dari https://www.vpngate.net/api/iphone data berisi csv 
+ - home page melakukan card dari data yang ada
+   [
+    Country: 
+    Hostname: 
+    Connect:
+   ]
+   - Setelah terkonfigsi homepage akan beralih dan bisa diconnect
+   - Import vpn user juga bisa melakukan import confignya sendiri 
+   - config harus open vpn .ovpn
+
+ NOTE
+ - Jangan terlalu low level atau detail
+ - Cukup Instruksikan secara hig level 
+ - nanti dokumennya akan digunakan oleh programmer atau model lain untuk di implentasikan
