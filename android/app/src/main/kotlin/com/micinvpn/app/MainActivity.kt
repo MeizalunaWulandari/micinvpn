@@ -1,4 +1,4 @@
-package com.micinvpn.micinvpn
+package com.micinvpn.app
 
 import io.flutter.embedding.android.FlutterActivity
 
