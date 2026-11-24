@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:openvpn_flutter/openvpn_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/vpn_server.dart';
 
 enum ConnectionStatus {
@@ -91,20 +92,41 @@ class VpnController extends ChangeNotifier {
     }
   }
 
-  void connect() {
+  Future<void> connect() async {
     if (_selectedServer == null) return;
+
+    // Request notification permission on Android 13+ so ForegroundService can display active notification
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final notifStatus = await Permission.notification.status;
+        if (!notifStatus.isGranted) {
+          await Permission.notification.request();
+        }
+      } catch (_) {}
+    }
+
     final config = _selectedServer!.configContent;
 
     _status = ConnectionStatus.connecting;
     notifyListeners();
 
-    _openVPN.connect(
-      config,
-      _selectedServer!.countryLong,
-      username: 'vpn',
-      password: 'vpn',
-      certIsRequired: false,
-    );
+    try {
+      final granted = await _openVPN.connect(
+        config,
+        _selectedServer!.countryLong,
+        username: 'vpn',
+        password: 'vpn',
+        certIsRequired: false,
+      );
+
+      if (!granted) {
+        _status = ConnectionStatus.denied;
+        notifyListeners();
+      }
+    } catch (e) {
+      _status = ConnectionStatus.disconnected;
+      notifyListeners();
+    }
   }
 
   void disconnect() {
