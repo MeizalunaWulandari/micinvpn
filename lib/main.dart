@@ -68,21 +68,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchServers();
   }
 
-  Future<void> _fetchServers() async {
+  Future<void> _fetchServers({bool forceRefresh = false}) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final servers = await _vpnGateService.fetchServers();
+      final servers = await _vpnGateService.fetchServers(forceRefresh: forceRefresh);
       setState(() {
         _servers = servers;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
       });
     }
@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
             IconButton(
               tooltip: 'Refresh Servers',
               icon: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: _isLoading ? null : _fetchServers,
+              onPressed: _isLoading ? null : () => _fetchServers(forceRefresh: true),
             ),
         ],
       ),
@@ -252,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: _fetchServers,
+            onRefresh: () => _fetchServers(forceRefresh: true),
             child: ListView.builder(
               itemCount: _servers.length,
               itemBuilder: (context, index) {
